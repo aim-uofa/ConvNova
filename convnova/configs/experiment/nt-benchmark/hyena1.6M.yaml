@@ -1,0 +1,150 @@
+# @package _global_
+defaults:
+  - /pipeline: nucleotide_transformer
+  - override /scheduler: cosine_warmup_timm
+
+model:
+  _name_: dna_embedding
+  d_model: 256
+  n_layer: 2
+  d_inner: ${eval:4 * ${.d_model}}
+  vocab_size: 12
+  resid_dropout: 0.1
+  embed_dropout: 0.2
+  fused_mlp: False # figure out how to use fused MLP, maybe only with bf16 + a100
+  fused_dropout_add_ln: True
+  residual_in_fp32: True
+  pad_vocab_size_multiple: 8
+  # attn_layer_idx: [0,1,2,3,4,5,6,7,8,9,10,11]  # if passing these attn flags, then MHA auto used
+  # attn_cfg:
+  #   num_heads: 8
+  #   use_flash_attn: True  # figure out how to use
+  #   fused_bias_fc: False  # this doesn't work for some reason, loss not going down
+  #   dropout: 0.1
+  #   rotary_emb_dim: 16 
+  layer:
+    _name_: hyena
+    emb_dim: 5
+    filter_order: 64
+    short_filter_order: 3
+    l_max: 1026  # required to be set the same as the pretrained model if using, don't forget the +2!  ${eval:${dataset.max_length}+2}
+    modulate: True
+    w: 10
+    lr: ${optimizer.lr}
+    wd: 0.0
+    lr_pos_emb: 0.0
+# model: 
+#   # _name_: convnext
+#   # d_model: 128
+#   # # max_length: ${dataset.max_length}
+#   # max_length: 8193
+#   # vocab_size: 12
+#   # pad_vocab_size_multiple: 8
+#   # k_size: 5
+#   _name_: lm
+#     d_model: 128
+#     n_layer: 8
+#     d_inner: 512
+#     vocab_size: 12
+#     resid_dropout: 0.0
+#     embed_dropout: 0.1
+#     fused_mlp: false
+#     fused_dropout_add_ln: false
+#     checkpoint_mixer: false
+#     checkpoint_mlp: false
+#     residual_in_fp32: true
+#     pad_vocab_size_multiple: 8
+#     layer:
+#       _name_: hyena
+#       emb_dim: 5
+#       filter_order: 64
+#       short_filter_order: 3
+#       l_max: 8195
+#       modulate: true
+#       w: 10
+#       lr: 0.002
+#       wd: 0.0
+#       lr_pos_emb: 0.0
+
+task:
+  _name_: masked_multiclass
+  loss: cross_entropy
+  # metrics:
+  #   - accuracy
+  torchmetrics: null
+
+trainer:
+  accelerator: gpu
+  devices: 2
+  num_nodes: 1
+  accumulate_grad_batches: ${div_up:${train.global_batch_size}, ${eval:${trainer.devices} * ${dataset.batch_size} * ${trainer.num_nodes}}}
+  max_epochs: 20
+  precision: 32  # bf16 only a100
+  gradient_clip_val: 1.0
+  # strategy: null
+
+# name maxlen classes samples metric
+
+# enhancer 200   2  14968 MCC
+# enhancer_types 200   3  14968 MCC
+# H3 500   2  13468 MCC
+# H3K4me1  500   2  28509 MCC
+# H3K4me2  500   2  27614 MCC
+# H3K4me3  500   2  33119 MCC
+# H3K9ac   500   2  25003 MCC
+# H3K14ac  500   2  29743 MCC
+# H3K36me3 500   2  31392 MCC
+# H3K79me3 500   2  25953 MCC
+# H4 500   2  13140 MCC
+# H4ac  500   2  30685 MCC
+# promoter_all   300   2  53276 F1
+# promoter_non_tata 300   2  47759 F1
+# promoter_tata  300   2  5517  F1
+# splice_sites_acceptor   600   2  19961 F1
+# splice_sites_donor   600   2  19775 F1
+
+
+dataset:
+  # batch_size: 32  # Per GPU
+  batch_size: 128
+  # max_length: 515 # select max that you want for this dataset
+  # dataset_name: 'human_nontata_promoters'
+  dataset_name: 'H4ac'
+  # dest_path: '/mnt/nas/share2/home/by/hyena-dna/data/genomic_benchmark/'
+  # d_output: 3  # binary classification by default
+  # use_padding: True
+  # padding_side: 'left'
+  # add_eos: False
+  # train_len: 289061  # update this according to above table
+  # __l_max: ${.max_length}
+  tokenizer_name: char
+  add_eos: false
+  rc_aug: false  # reverse complement augmentation
+  return_mask: false
+  padding_side: left
+  # num_workers: 1
+  # rc_aug: true  # reverse complement augmentation.  Didn't seem to help for human_nontata_promoters, but could be wrong
+
+scheduler:
+  t_in_epochs: False
+  t_initial: ${eval:${div_up:${dataset.train_len}, ${train.global_batch_size}} * ${trainer.max_epochs}}
+  warmup_lr_init: 1e-6
+  warmup_t: ${eval:${div_up:${dataset.train_len}, ${train.global_batch_size}} * ${trainer.max_epochs} * 0.01}
+  lr_min: ${eval:0.1 * ${optimizer.lr}}
+
+optimizer:
+  lr: 6e-4
+  weight_decay: 0.1
+
+train:
+  gpu_mem: ${eval:"round(float(__import__('subprocess').check_output('nvidia-smi -i 0 --query-gpu=memory.total --format=csv,noheader,nounits', shell=True).strip().decode()) / 1000)"}
+  seed: 2222
+  global_batch_size: ${eval:${trainer.devices}*${dataset.batch_size}}
+  remove_test_loader_in_eval: true  # no test set in this benchmark
+  pretrained_model_strict_load: False  # false allows encoder/decoder to be used if new model uses it
+  # for loading backbone and not head, requires both of these flags below
+  # pretrained_model_path: /mnt/nas/share2/home/by/hyena-dna/outputs/2024-04-16/15-28-14-651739/checkpoints/test/loss.ckpt
+  pretrained_model_path: /mnt/nas/share2/home/by/hyena-dna/outputs/2-256-1k.ckpt #/mnt/nas/share2/home/by/hyena-dna/outputs/weights.ckpt
+  pretrained_model_state_hook:
+    _name_: load_backbone
+    freeze_backbone: false  # seems to work much better if false (ie finetune entire model)
