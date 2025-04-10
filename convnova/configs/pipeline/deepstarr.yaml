@@ -1,0 +1,26 @@
+# @package _global_
+defaults:
+  - /trainer: default
+  - /loader: default
+  - /dataset: deepstarr
+  - /task: regression
+  - /optimizer: adamw
+  - /scheduler: plateau
+  - /callbacks: [base, checkpoint]
+
+train:
+  monitor: test/pearsonr_mean
+  mode: max
+
+task:
+  loss: customMSE
+  #   _name_: cross_entropy
+  metrics:
+    - ${dataset.metric}
+
+encoder: id
+
+# we need this for classification!
+decoder:
+  _name_: sequence
+  mode: pool
