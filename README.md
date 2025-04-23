@@ -10,134 +10,103 @@
 </p>
 
 <p>
-  ConvNova re-examines classical CNNs for genomic language modelling and shows that <strong>dilated convolutions, gated convolutions, and a dual-branch gating design</strong> allow a <em>7 M-parameter</em> network to match or exceed SSM- and Transformer-based backbones such as HyenaDNA and Caduceus on <strong>Genomic Benchmarks, Nucleotide Transformer tasks, and the Long-Range Benchmark</strong> while training and running faster.
+  ConvNova demonstrates that, if carefully designed, <strong>a pure CNN can serve as a DNA foundation model that surpasses Transformer and SSM-inspired architectures</strong>, while retaining the classic convolutional advantages of stronger locality bias, lower memory footprint, and markedly faster training and inference.
 </p>
 
----
-
-<h2>1 Using ConvNova with 🤗 Transformers</h2>
-<p>Pre-trained checkpoints (131 k tokens) are released on the HuggingFace Hub:</p>
-<table>
-  <tr>
-    <th>Model</th>
-    <th>d_model</th>
-    <th>Layers</th>
-    <th>Steps</th>
-    <th>RC handling</th>
-  </tr>
-  <tr>
-    <td><strong>ConvNova-Ph</strong></td>
-    <td>256</td>
-    <td>16</td>
-    <td>50 k</td>
-    <td>RC data-aug</td>
-  </tr>
-  <tr>
-    <td><strong>ConvNova-PS</strong></td>
-    <td>256</td>
-    <td>16</td>
-    <td>50 k</td>
-    <td>RC-equivariant</td>
-  </tr>
-</table>
-
-<pre>
-from transformers import AutoTokenizer, AutoModelForMaskedLM
-
-model_id = "convnova/convnova-ph_seqlen-131k_d_model-256_n_layer-16"
-tokenizer = AutoTokenizer.from_pretrained(model_id)
-model     = AutoModelForMaskedLM.from_pretrained(model_id)
-</pre>
-
-<p>To initialise a smaller scratch model:</p>
-
-<pre>
-from transformers import AutoConfig, AutoModelForMaskedLM
-config = AutoConfig.from_pretrained(
-    model_id, d_model=128, n_layer=8
-)
-model  = AutoModelForMaskedLM.from_config(config)
-</pre>
-
-<p><em>ConvNova uses the standard `K-merTokenizer` shipped with HyenaDNA</em> .</p>
 
 ---
 
-<h2>2 Quick start</h2>
+## 🚩 Plan
+- [x] Scripts for Pretraining, NT & Genomic Benchmarks.
+- [x] Paper Released.
+- [ ] Pretrained Weights of ConvNova.
+- [ ] Source Code and Pretrained Weights on transformers.
+- [ ] Scripts for DeepSEA & Bend-gene-finding.
 
+---
+
+<h2>1 Quick start</h2>
+
+Clone the repo.
 <pre>
-conda env create -f convnova_env.yml
-conda activate convnova_env
-
-# suggested folders
-mkdir -p data/hg38 outputs logs
+  git clone git@github.com:aim-uofa/ConvNova.git
+  cd ConvNova/convnova
 </pre>
 
-<p>The <strong>environment YAML</strong> mirrors HyenaDNA & Caduceus dependencies and pins <code>pytorch>=2.2</code>, <code>flash-attention-cuda20x</code>, <code>transformers>=4.40</code>, and <code>genomic-benchmarks</code>. </p>
+Prepare conda env.
+<pre>
+  conda create -n convnova python==3.10
+  conda activate convnova
+  pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 
+  pip install -r requirements.txt --no-deps
+  pip install pytorch-lightning==1.8.6 --no-deps
+  pip install packaging --no-deps
+<!--   pip install flash_attn --no-build-isolation --no-deps -->
+  pip install lightning_utilities --no-deps
+  pip install torchmetrics
+  pip install tensorboardX
+</pre>
+
+Download the data.(Pretrain)
+<pre>
+  mkdir data
+  mkdir -p data/hg38/
+  curl https://storage.googleapis.com/basenji_barnyard2/hg38.ml.fa.gz > data/hg38/hg38.ml.fa.gz
+  gunzip data/hg38/hg38.ml.fa.gz  # unzip the fasta file
+  curl https://storage.googleapis.com/basenji_barnyard2/sequences_human.bed > data/hg38/human-sequences.bed
+</pre>
+
+You can check out the <a href="https://www.biorxiv.org/content/10.1101/2023.01.11.523679v1">Nucleotide Transformer</a> ang <a href="https://github.com/ML-Bioinfo-CEITEC/genomic_benchmarks">Genomic Benchmarks</a> paper for how to download and process NT benchmark & Genomic Benchmark datasets.
+
+The final file structure (data directory) should look like
+
+<pre>
+  |____bert_hg38
+| |____hg38.ml.fa
+| |____hg38.ml.fa.fai
+| |____human-sequences.bed
+|____nucleotide_transformer
+| |____H3K36me3
+| |____......
+|____genomic_benchmark
+| |____dummy_mouse_enhancers_ensembl
+| |____....
+</pre>
+
+---
+
+<h2>2 Using ConvNova with 🤗 Transformers</h2>
+<p>Coming Soon</p>
 
 ---
 
 <h2>3 Reproducing the paper</h2>
 
 <h3>3.1 Pre-training on the Human Reference Genome</h3>
-<p>Download the FASTA & BED splits (courtesy of HyenaDNA): </p>
 
 <pre>
-mkdir -p data/hg38
-curl -L https://storage.googleapis.com/basenji_barnyard2/hg38.ml.fa.gz \
-   | gunzip -c > data/hg38/hg38.ml.fa
-curl -L https://storage.googleapis.com/basenji_barnyard2/sequences_human.bed \
-   -o data/hg38/human-sequences.bed
+  python train.py experiment='hg38-pretrain/convnova'
 </pre>
 
-<p>Single-node example (4×A100 80 GB):</p>
-
+you can adjust the hyperparameters by using cmd like following, detailed hyperparameters setting can be seen in configs/experiment/xxx/xxx.yaml
 <pre>
-python -m train \
-  experiment=hg38/hg38 \
-  dataset.max_length=1024 dataset.batch_size=1024 \
-  model=convnova model.config.d_model=128 model.config.n_layer=8 \
-  optimizer.lr=8e-3 trainer.max_steps=10000 \
-  callbacks.model_checkpoint_every_n_steps.every_n_train_steps=500 \
-  wandb=null
+  python train.py experiment='hg38-pretrain/convnova' wandb=null trainer.devices=4
 </pre>
-
-<p>For Slurm clusters use <code>slurm_scripts/run_pretrain_convnova.sh</code>.</p>
 
 <h3>3.2 Genomic Benchmarks (short-range)</h3>
 <p>GenomicBenchmarks provides 8 binary- and multi-class tasks packaged as a Python library. </p>
 
+Remeber to adjust the setting for different dataset like max seq length and the pretrained checkpoint(comming soon).
 <pre>
-python -m train \
-  experiment=hg38/genomic_benchmark \
-  dataset.dataset_name="dummy_mouse_enhancers_ensembl" \
-  dataset.batch_size=256 \
-  model=convnova \
-  train.pretrained_model_path="<ckpt>" \
-  trainer.max_epochs=10 wandb=null
+  python train.py experiment='genomic-benchmark/convnova' with-some-argments
 </pre>
 
 <h3>3.3 Nucleotide Transformer Benchmark</h3>
 <p>Datasets are hosted on the Hub as <code>InstaDeepAI/nucleotide_transformer_downstream_tasks</code>. </p>
-<p>Use <code>slurm_scripts/run_nucleotide_transformer.sh</code> to sweep all 18 tasks.</p>
-
-<h3>3.4 Long-Range Benchmark (eQTL VEP)</h3>
-<p>The <strong>genomics-long-range-benchmark</strong> dataset supplies variant-effect prediction sequences up to 131 k. </p>
-
-<ol>
-  <li><strong>Dump embeddings</strong>:
-    <pre>
-    torchrun --nproc-per-node=8 vep_embeddings.py \
-      --seq_len=131072 --embed_dump_batch_size=1 \
-      --model_name_or_path convnova/convnova-ps_seqlen-131k_d_model-256_n_layer-16 \
-      --rcps
-    </pre>
-  </li>
-  <li><strong>Fit SVM head</strong> in <code>notebooks/vep_svm.ipynb</code>.</li>
-</ol>
-
-<h3>3.5 Ablations</h3>
-<p>Scripts under <code>ablation/</code> reproduce Table 4 of the paper, contrasting <strong>dilation vs down-sampling</strong> and different gating variants. </p>
+Remeber to adjust the setting for different dataset like max seq length and the pretrained checkpoint(comming soon).
+<pre>
+  python train.py experiment='nt-benchmark/convnova' with-some-argments
+</pre>
 
 ---
 
