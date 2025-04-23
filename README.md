@@ -6,7 +6,7 @@
   <a href="https://arxiv.org/abs/2502.18538">arXiv</a> | 
   <a href="https://github.com/aim-uofa/ConvNova">GitHub</a> | 
   <a href="">HuggingFace 🤗(coming soon)</a>
-<!--   <a href="https://huggingface.co/collections/convnova">HuggingFace 🤗</a> <!-- collection will be public on release day --> -->
+<!--   <a href="https://huggingface.co/collections/convnova">HuggingFace 🤗</a> <!-- collection will be public on release day --> 
 </p>
 
 <p>
